@@ -155,15 +155,27 @@ class Game:
     def positions_equal(self, first, second):
         return first[0] == second.x and first[1] == second.y
 
+    def step(self, direction):
+        score = self.score
+        moved = self.move(direction)
+        reward = self.score - score
+        if not moved:
+            reward = -10
+        if self.won:
+            reward = 1000
+        if self.over:
+            reward = -1000
+        return self.grid.array(), reward, self.won or self.over
     
-game = Game(4)
-game.setup()
-print(game.grid)
-print("\n")
+    
+# game = Game(4)
+# game.setup()
+# print(game.grid)
+# print("\n")
 
-for i in range(10):
-    game.move(random.randint(0, 3))
-    print(game.grid)
-    print("\n")
+# for i in range(10):
+#     game.move(random.randint(0, 3))
+#     print(game.grid)
+#     print("\n")
 
-print(game.score)
+# print(game.score)

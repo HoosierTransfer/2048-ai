@@ -90,7 +90,7 @@ class Grid:
             'cells': cells
         }
     
-    def __repr__(self):
+    def array(self):
         cells = []
         for x in range(self.size):
             row = []
@@ -99,4 +99,4 @@ class Grid:
             
             cells.append(row)
 
-        return str(np.asarray(cells))
+        return np.asarray(cells)
