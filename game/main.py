@@ -3,142 +3,140 @@ import tensorflow as tf
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras import layers
-from collections import deque
-import random
+import tensorflow.keras.backend as K
+import pickle
+import os
+import pygame
+import time
+# Initialize Pygame
+pygame.init()
 
-class dqn:
-    def __init__(self, state_size, action_size):
-        self.state_size = state_size
-        self.action_size = action_size
-        self.memory = deque(maxlen=5000)
+# Constants
+GRID_SIZE = 4  # 4x4 grid
+SQUARE_SIZE = 100
+GAP_SIZE = 10
+WIDTH = GRID_SIZE * (SQUARE_SIZE + GAP_SIZE) - GAP_SIZE
+HEIGHT = GRID_SIZE * (SQUARE_SIZE + GAP_SIZE) - GAP_SIZE
+print(WIDTH)
+FONT_SIZE = 36
+MAX_NUMBER = 2048
 
-        self.gamma = 0.99           # Discount rate
-        self.epsilon = 1.0          # Exploration rate
-        self.epsilon_min = 0.1      # Minimal exploration rate (epsilon-greedy)
-        self.epsilon_decay = 0.995  # Decay rate for epsilon
-        self.update_rate = 1000     # Number of steps until updating the target network
+# Colors
+BACKGROUND_COLOR = (187, 173, 160)
+SQUARE_COLORS = {
+    2: (238, 228, 218),
+    4: (237, 224, 200),
+    8: (242, 177, 121),
+    16: (245, 149, 99),
+    32: (246, 124, 95),
+    64: (246, 94, 59),
+    128: (237, 207, 114),
+    256: (237, 204, 97),
+    512: (237, 200, 80),
+    1024: (237, 197, 63),
+    2048: (237, 194, 46),
+}
 
-        # Construct DQN models
-        self.model = self._build_model()
-        self.target_model = self._build_model()
-        self.target_model.set_weights(self.model.get_weights())
-        self.model.summary()
-    
-    def _build_model(self):
-        model = keras.Sequential()
-        model.add(layers.Conv2D(32, 2, padding="same", activation="relu", input_shape=self.state_size))
-        model.add(layers.Conv2D(64, 2, padding="same", activation="relu"))
-        model.add(layers.Flatten())
-        model.add(layers.Dense(256, activation="relu"))
-        model.add(layers.Dense(self.action_size, activation="linear"))
+# Create a window
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Grid with Numbers")
 
-        model.compile(loss="mse", optimizer=keras.optimizers.Adam())
+# Font for rendering numbers
+font = pygame.font.Font(None, FONT_SIZE)
 
-        return model
+# Function to draw a grid of squares with numbers
+def draw_grid(grid):
+    for row in range(GRID_SIZE):
+        for col in range(GRID_SIZE):
+            x = col * (SQUARE_SIZE + GAP_SIZE)
+            y = row * (SQUARE_SIZE + GAP_SIZE)
+            value = grid[row, col]
+            square_color = SQUARE_COLORS.get(value, (205,193,180))
+            pygame.draw.rect(screen, square_color, (x, y, SQUARE_SIZE, SQUARE_SIZE), border_radius=7)
+            if value > 0:
+                text_surface = font.render(str(value), True, (0, 0, 0))
+                text_rect = text_surface.get_rect(center=(x + SQUARE_SIZE // 2, y + SQUARE_SIZE // 2))
+                screen.blit(text_surface, text_rect)
 
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
-    
-    def act(self, state):
-        # Random exploration
-        if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
-        
-        act_values = self.model.predict(state)
-        
-        return np.argmax(act_values[0])  # Returns action using policy
+# Function to initialize the display with a 4x4 NumPy array
+def init_display(initial_grid):
+    screen.fill(BACKGROUND_COLOR)
+    draw_grid(initial_grid)
+    pygame.display.flip()
 
-    #
-    # Trains the model using randomly selected experiences in the replay memory
-    #
-    def replay(self, batch_size):
-        minibatch = random.sample(self.memory, batch_size)
-        
-        for state, action, reward, next_state, done in minibatch:
-            
-            if not done:
-                target = (reward + self.gamma * np.amax(self.target_model.predict(next_state)))
-            else:
-                target = reward
-                
-            # Construct the target vector as follows:
-            # 1. Use the current model to output the Q-value predictions
-            target_f = self.model.predict(state)
-            
-            # 2. Rewrite the chosen action value with the computed target
-            target_f[0][action] = target
-            
-            # 3. Use vectors in the objective computation
-            self.model.fit(state, target_f, epochs=1, verbose=0)
-            
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+# Function to update the display with a new 4x4 NumPy array
+def update_display(new_grid):
+    screen.fill(BACKGROUND_COLOR)
+    draw_grid(new_grid)
+    pygame.display.flip()
 
-    #
-    # Sets the target model parameters to the current model parameters
-    #
-    def update_target_model(self):
-        self.target_model.set_weights(self.model.get_weights())
-            
-    #
-    # Loads a saved model
-    #
-    def load(self, name):
-        self.model.load_weights(name)
+num_actions = 4
+def create_q_model():
+    inputs = layers.Input(shape=(4, 4, 1))
+    x = layers.Conv2D(32, 2, padding="same", activation="relu")(inputs)
+    x = layers.Conv2D(64, 2, padding="same", activation="relu")(x)
+    x = layers.Flatten()(x)
 
-    #
-    # Saves parameters of a trained model
-    #
-    def save(self, name):
-        self.model.save_weights(name)
+    x = layers.Dense(256, activation="relu")(x)
+    action = layers.Dense(num_actions, activation="linear")(x)
+
+    return keras.Model(inputs=inputs, outputs=action)
+
+model = create_q_model()
+
+model.load_weights('weights.h5')
 
 game = Game(4)
-state_size = (4, 4, 1)
-action_size = 4
-agent = dqn(state_size, action_size)
 
-episodes = 500
-batch_size = 8
-skip_start = 90  # MsPacman-v0 waits for 90 actions before the episode begins
-total_time = 0   # Counter for total number of steps taken
-all_rewards = 0  # Used to compute avg reward over time
-done = False
+not_moved_counter = 0
 
-for e in range(episodes):
-    total_reward = 0
-    game_score = 0
+win = False
+
+def gaussian_noise(x,std):
+    noise = np.random.normal(0, std, size = x.shape)
+    x_noisy = x + noise
+    return x_noisy 
+
+state = game.grid.array()
+clock=pygame.time.Clock()
+time.sleep(1)
+pygame.mixer.init()
+pygame.mixer.music.load("wait.mp3")
+state_tensor = tf.convert_to_tensor(game.grid.array())
+state_tensor = tf.expand_dims(state_tensor, 0)
+action_probs = model(state_tensor, training=False)
+pygame.mixer.music.play(100)
+while True:
     game.setup()
     state = game.grid.array()
-    
-    for time in range(20000):
-        total_time += 1
-        
-        # Every update_rate timesteps we update the target network parameters
-        if total_time % agent.update_rate == 0:
-            agent.update_target_model()
-        
-        # Transition Dynamics
-        action = agent.act(state)
-        next_state, reward, done = game.step(action)
-        
-        # Return the avg of the last 4 frames
-        next_state = next_state
-        
-        # Store sequence in replay memory
-        agent.remember(state, action, reward, next_state, done)
-        
-        state = next_state
-        game_score += reward
-        reward -= 1  # Punish behavior which does not accumulate reward
-        total_reward += reward
-        
-        if done:
-            all_rewards += game_score
-            
-            print("episode: {}/{}, game score: {}, reward: {}, avg reward: {}, time: {}, total time: {}"
-                  .format(e+1, episodes, game_score, total_reward, all_rewards/(e+1), time, total_time))
-            
-            break
-            
-        if len(agent.memory) > batch_size:
-            agent.replay(batch_size)
+    while not win:
+        pygame.event.get()
+        # clock.tick(2)
+        training_state = game.grid.array()
+
+        if not_moved_counter >= 1:
+            # increase noise over time
+            training_state = gaussian_noise(training_state, 0.02 * not_moved_counter)
+
+        state_tensor = tf.convert_to_tensor(training_state)
+        state_tensor = tf.expand_dims(state_tensor, 0)
+        action_probs = model(state_tensor, training=False)
+
+        action = tf.argmax(action_probs[0]).numpy()
+
+        state, reward, win, = game.step(action)
+
+        if reward == -4:
+            not_moved_counter += 1
+        elif not_moved_counter > 0:
+            not_moved_counter = 0
+
+        update_display(game.grid.__repr__())
+        time.sleep(60/114)
+
+print("The ai has " + "won" if game.won else "lost")
+print(game.grid)
+
+
+while True:
+    update_display(game.grid.__repr__())

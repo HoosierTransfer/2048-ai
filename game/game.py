@@ -15,6 +15,7 @@ class Game:
         self.grid = Grid(self.size)
 
         self.score = 0
+        self.real_score = 0
         self.over = False
         self.won = False
         self.keep_playing = False
@@ -78,8 +79,8 @@ class Game:
 
                         tile.update_position(positions[1])
 
-                        self.score += merged.value
-
+                        self.score += np.log2(merged.value)
+                        self.real_score += merged.value
                         if merged.value == 2048:
                             self.won = True
                     else:
@@ -92,6 +93,8 @@ class Game:
             self.add_random_tile()
             if not self.moves_available():
                 self.over = True
+        
+        return moved
     
     def get_vector(self, direction):
         vectors = {
@@ -160,11 +163,11 @@ class Game:
         moved = self.move(direction)
         reward = self.score - score
         if not moved:
-            reward = -10
+            reward = -4
         if self.won:
-            reward = 1000
+            reward = 500
         if self.over:
-            reward = -1000
+            reward = -200
         return self.grid.array(), reward, self.won or self.over
     
     

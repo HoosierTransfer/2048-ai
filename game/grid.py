@@ -95,6 +95,17 @@ class Grid:
         for x in range(self.size):
             row = []
             for y in range(self.size):
+                row.append(np.log2(self.cells[x][y].value) if self.cells[x][y] is not None else 0)
+            
+            cells.append(row)
+
+        return np.asarray(cells)
+
+    def __repr__(self):
+        cells = []
+        for x in range(self.size):
+            row = []
+            for y in range(self.size):
                 row.append(self.cells[x][y].value if self.cells[x][y] is not None else 0)
             
             cells.append(row)
